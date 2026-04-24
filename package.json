@@ -1,7 +1,7 @@
 {
   "name": "flareplan-native",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
@@ -9,10 +9,20 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native-async-storage/async-storage": "^3.0.2",
+    "@supabase/supabase-js": "^2.104.1",
     "expo": "~54.0.33",
+    "expo-constants": "^55.0.15",
+    "expo-font": "^55.0.6",
+    "expo-linking": "^55.0.14",
+    "expo-router": "^55.0.13",
+    "expo-secure-store": "^55.0.13",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-native": "0.81.5",
+    "react-native-url-polyfill": "^3.0.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
