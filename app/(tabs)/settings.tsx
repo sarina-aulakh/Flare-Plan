@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase'
 import { Colors } from '../../constants/colors'
 
 const CANVAS_TOKEN_KEY = 'canvas_token'
+const CANVAS_DOMAIN_KEY = 'canvas_domain'
 
 function detectEnergy(name: string): 'light' | 'medium' | 'heavy' {
   const lower = name.toLowerCase()
@@ -27,6 +28,7 @@ type PendingTask = {
 
 export default function Settings() {
   const [token, setToken] = useState('')
+  const [domain, setDomain] = useState('')
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -36,30 +38,43 @@ export default function Settings() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    AsyncStorage.getItem(CANVAS_TOKEN_KEY).then((saved) => {
-      if (saved) { setToken(saved); setConnected(true) }
+    Promise.all([
+      AsyncStorage.getItem(CANVAS_TOKEN_KEY),
+      AsyncStorage.getItem(CANVAS_DOMAIN_KEY),
+    ]).then(([savedToken, savedDomain]) => {
+      if (savedToken) setToken(savedToken)
+      if (savedDomain) setDomain(savedDomain)
+      if (savedToken && savedDomain) setConnected(true)
     })
   }, [])
 
   const handleConnect = async () => {
-    if (!token) return
+    if (!token || !domain) return
     setConnecting(true)
     setError('')
 
-    await AsyncStorage.setItem(CANVAS_TOKEN_KEY, token)
+    const base = `https://${domain.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
 
-    const response = await fetch('/api/canvas?endpoint=courses', {
-      headers: { 'canvas-token': token },
+    const response = await fetch(`${base}/api/v1/courses?enrollment_state=active`, {
+      headers: { Authorization: `Bearer ${token}` },
     }).catch(() => null)
 
     if (!response || !response.ok) {
-      setError('Could not connect to Canvas. Check your token.')
+      setError('Could not connect to Canvas. Check your domain and token.')
       setConnecting(false)
       return
     }
 
-    const data = await response.json()
+    let data: any
+    try { data = await response.json() } catch {
+      setError('Canvas returned an unexpected response.')
+      setConnecting(false)
+      return
+    }
+
     if (Array.isArray(data)) {
+      await AsyncStorage.setItem(CANVAS_TOKEN_KEY, token)
+      await AsyncStorage.setItem(CANVAS_DOMAIN_KEY, domain)
       setConnected(true)
     } else {
       setError('Invalid token or Canvas is unavailable.')
@@ -74,8 +89,10 @@ export default function Settings() {
     setSavedCount(0)
     setError('')
 
-    const response = await fetch('/api/canvas?endpoint=assignments', {
-      headers: { 'canvas-token': token },
+    const base = `https://${domain.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
+
+    const response = await fetch(`${base}/api/v1/users/self/todo`, {
+      headers: { Authorization: `Bearer ${token}` },
     }).catch(() => null)
 
     if (!response || !response.ok) {
@@ -84,7 +101,13 @@ export default function Settings() {
       return
     }
 
-    const assignments = await response.json()
+    let assignments: any
+    try { assignments = await response.json() } catch {
+      setError('Canvas returned an unexpected response.')
+      setSyncing(false)
+      return
+    }
+
     if (!Array.isArray(assignments)) {
       setError('Unexpected response from Canvas.')
       setSyncing(false)
@@ -137,6 +160,16 @@ export default function Settings() {
 
           <TextInput
             style={styles.input}
+            placeholder="Canvas domain (e.g. canvas.myschool.edu)"
+            placeholderTextColor={Colors.accent}
+            value={domain}
+            onChangeText={setDomain}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+          <TextInput
+            style={styles.input}
             placeholder="Paste your Canvas API token"
             placeholderTextColor={Colors.accent}
             value={token}
@@ -146,9 +179,9 @@ export default function Settings() {
             autoCorrect={false}
           />
           <TouchableOpacity
-            style={[styles.button, (!token || connecting) && styles.buttonDisabled]}
+            style={[styles.button, (!token || !domain || connecting) && styles.buttonDisabled]}
             onPress={handleConnect}
-            disabled={!token || connecting}
+            disabled={!token || !domain || connecting}
           >
             {connecting
               ? <ActivityIndicator color={Colors.white} />
@@ -232,43 +265,43 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   container: { padding: 24, paddingBottom: 80 },
   eyebrow: { fontSize: 11, letterSpacing: 2, color: Colors.accent, textTransform: 'uppercase', marginBottom: 6, marginTop: 8 },
-  heading: { fontSize: 28, fontWeight: '700', color: Colors.text, marginBottom: 24 },
+  heading: { fontSize: 30, fontWeight: '700', color: Colors.text, marginBottom: 24 },
   card: {
-    backgroundColor: Colors.white, borderRadius: 18, padding: 18,
+    backgroundColor: Colors.white, borderRadius: 24, padding: 18,
     marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
+    shadowColor: '#8B4A35', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 2,
   },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: Colors.secondary, marginBottom: 4 },
-  cardSub: { fontSize: 13, color: Colors.accent, marginBottom: 14 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: Colors.secondary, marginBottom: 4 },
+  cardSub: { fontSize: 14, color: Colors.accent, marginBottom: 14, lineHeight: 22 },
   input: {
-    backgroundColor: Colors.background, borderRadius: 12, padding: 14,
-    fontSize: 14, color: Colors.secondary, marginBottom: 12,
+    backgroundColor: Colors.background, borderRadius: 16, padding: 16,
+    fontSize: 16, color: Colors.secondary, marginBottom: 12,
   },
   button: {
-    backgroundColor: Colors.text, borderRadius: 12, padding: 15, alignItems: 'center',
+    backgroundColor: Colors.text, borderRadius: 16, padding: 16, alignItems: 'center',
   },
   buttonDisabled: { opacity: 0.4 },
-  buttonText: { color: Colors.white, fontSize: 14, fontWeight: '600' },
-  savedNote: { fontSize: 13, color: '#10B981', marginBottom: 10 },
-  error: { color: '#F87171', fontSize: 13, marginBottom: 12 },
-  pendingHeader: { fontSize: 14, fontWeight: '500', color: Colors.secondary, marginBottom: 12 },
+  buttonText: { color: Colors.white, fontSize: 16, fontWeight: '600' },
+  savedNote: { fontSize: 14, color: '#6B9E6B', marginBottom: 10 },
+  error: { color: '#F87171', fontSize: 14, marginBottom: 12 },
+  pendingHeader: { fontSize: 16, fontWeight: '500', color: Colors.secondary, marginBottom: 12 },
   pendingCard: {
-    backgroundColor: Colors.white, borderRadius: 14, padding: 14,
+    backgroundColor: Colors.white, borderRadius: 24, padding: 16,
     marginBottom: 10,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 2, elevation: 1,
+    shadowColor: '#8B4A35', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 2,
   },
   pendingSubject: { fontSize: 11, color: Colors.accent, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 },
-  pendingTitle: { fontSize: 15, fontWeight: '600', color: Colors.text, marginBottom: 3 },
-  pendingDue: { fontSize: 12, color: Colors.accent, marginBottom: 12 },
+  pendingTitle: { fontSize: 16, fontWeight: '600', color: Colors.text, marginBottom: 3 },
+  pendingDue: { fontSize: 13, color: Colors.accent, marginBottom: 12 },
   energyRow: { flexDirection: 'row', gap: 8 },
   energyBtn: {
-    flex: 1, backgroundColor: Colors.background, borderRadius: 10,
-    paddingVertical: 9, alignItems: 'center',
+    flex: 1, backgroundColor: Colors.background, borderRadius: 12,
+    paddingVertical: 10, alignItems: 'center',
   },
   energyBtnActive: { backgroundColor: Colors.secondary },
   energyBtnText: { fontSize: 13, fontWeight: '500', color: Colors.accent, textTransform: 'capitalize' },
   energyBtnTextActive: { color: Colors.white },
   saveAllButton: { marginTop: 4, marginBottom: 16 },
-  signOutButton: { marginTop: 24, padding: 14, alignItems: 'center' },
+  signOutButton: { marginTop: 32, padding: 14, alignItems: 'center' },
   signOutText: { fontSize: 14, color: Colors.accent },
 })

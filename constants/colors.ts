@@ -1,16 +1,17 @@
 export const Colors = {
-  background: '#F0F2F5',
-  text: '#070709',
-  secondary: '#453F4F',
-  accent: '#98A4AB',
-  white: '#FFFFFF',
-  border: '#E5E7EB',
+  background: '#FAF7F2',
+  white: '#FFFDF9',
+  text: '#2C1810',
+  secondary: '#5C3D2E',
+  accent: '#A67C6D',
+  border: '#E8DDD5',
+  muted: '#C4A99A',
 } as const
 
 export const EnergyColors = {
-  light: { bg: '#D1FAE5', text: '#059669', dot: '#10B981' },
-  medium: { bg: '#FEF3C7', text: '#D97706', dot: '#F59E0B' },
-  heavy: { bg: '#FEE2E2', text: '#DC2626', dot: '#EF4444' },
-  low: { bg: '#FEE2E2', text: '#DC2626', dot: '#EF4444' },
-  high: { bg: '#D1FAE5', text: '#059669', dot: '#10B981' },
+  low: { bg: '#FDF0EB', dot: '#D4846A', text: '#8B4A35' },
+  medium: { bg: '#FDF5E6', dot: '#C4963A', text: '#7A5C1E' },
+  high: { bg: '#F0F7F0', dot: '#6B9E6B', text: '#2D5A2D' },
+  light: { bg: '#F0F7F0', dot: '#6B9E6B', text: '#2D5A2D' },
+  heavy: { bg: '#FDF0EB', dot: '#D4846A', text: '#8B4A35' },
 } as const
