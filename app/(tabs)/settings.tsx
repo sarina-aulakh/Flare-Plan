@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   SafeAreaView, ScrollView, ActivityIndicator,
 } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../../lib/supabase'
 import { Colors } from '../../constants/colors'
@@ -10,31 +11,12 @@ import { Colors } from '../../constants/colors'
 const CANVAS_TOKEN_KEY = 'canvas_token'
 const CANVAS_DOMAIN_KEY = 'canvas_domain'
 
-function detectEnergy(name: string): 'light' | 'medium' | 'heavy' {
-  const lower = name.toLowerCase()
-  const heavy = ['exam', 'final', 'midterm', 'essay', 'research', 'thesis', 'report', 'paper', 'project']
-  const light = ['quiz', 'reading', 'watch', 'review', 'discussion', 'post', 'reflection']
-  if (heavy.some((w) => lower.includes(w))) return 'heavy'
-  if (light.some((w) => lower.includes(w))) return 'light'
-  return 'medium'
-}
-
-type PendingTask = {
-  subject: string
-  title: string
-  due_date: string
-  energy_required: 'light' | 'medium' | 'heavy'
-}
-
 export default function Settings() {
-  const [token, setToken] = useState('')
   const [domain, setDomain] = useState('')
-  const [connected, setConnected] = useState(false)
-  const [connecting, setConnecting] = useState(false)
-  const [syncing, setSyncing] = useState(false)
+  const [token, setToken] = useState('')
+  const [showToken, setShowToken] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [pending, setPending] = useState<PendingTask[]>([])
-  const [savedCount, setSavedCount] = useState(0)
+  const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -44,103 +26,32 @@ export default function Settings() {
     ]).then(([savedToken, savedDomain]) => {
       if (savedToken) setToken(savedToken)
       if (savedDomain) setDomain(savedDomain)
-      if (savedToken && savedDomain) setConnected(true)
     })
   }, [])
 
-  const handleConnect = async () => {
-    if (!token || !domain) return
-    setConnecting(true)
-    setError('')
-
-    const base = `https://${domain.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
-
-    const response = await fetch(`${base}/api/v1/courses?enrollment_state=active`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => null)
-
-    if (!response || !response.ok) {
-      setError('Could not connect to Canvas. Check your domain and token.')
-      setConnecting(false)
-      return
-    }
-
-    let data: any
-    try { data = await response.json() } catch {
-      setError('Canvas returned an unexpected response.')
-      setConnecting(false)
-      return
-    }
-
-    if (Array.isArray(data)) {
-      await AsyncStorage.setItem(CANVAS_TOKEN_KEY, token)
-      await AsyncStorage.setItem(CANVAS_DOMAIN_KEY, domain)
-      setConnected(true)
-    } else {
-      setError('Invalid token or Canvas is unavailable.')
-    }
-
-    setConnecting(false)
-  }
-
-  const handleSync = async () => {
-    setSyncing(true)
-    setPending([])
-    setSavedCount(0)
-    setError('')
-
-    const base = `https://${domain.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
-
-    const response = await fetch(`${base}/api/v1/users/self/todo`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => null)
-
-    if (!response || !response.ok) {
-      setError('Could not sync assignments.')
-      setSyncing(false)
-      return
-    }
-
-    let assignments: any
-    try { assignments = await response.json() } catch {
-      setError('Canvas returned an unexpected response.')
-      setSyncing(false)
-      return
-    }
-
-    if (!Array.isArray(assignments)) {
-      setError('Unexpected response from Canvas.')
-      setSyncing(false)
-      return
-    }
-
-    const tasks: PendingTask[] = assignments
-      .filter((a: any) => a.assignment?.due_at)
-      .map((a: any) => ({
-        subject: a.context_name || 'Canvas',
-        title: a.assignment.name,
-        due_date: a.assignment.due_at.split('T')[0],
-        energy_required: detectEnergy(a.assignment.name),
-      }))
-
-    setPending(tasks)
-    setSyncing(false)
-  }
-
-  const updateEnergy = (index: number, energy: 'light' | 'medium' | 'heavy') => {
-    setPending((prev) => prev.map((t, i) => (i === index ? { ...t, energy_required: energy } : t)))
-  }
-
-  const handleSaveAll = async () => {
+  const handleSave = async () => {
+    if (!token) { setError('Please enter your Canvas access token.'); return }
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    setError('')
+    setSaved(false)
 
-    for (const task of pending) {
-      await supabase.from('tasks').insert({ ...task, user_id: user?.id, is_completed: false })
+    const base = `https://${(domain || '').replace(/^https?:\/\//, '').replace(/\/$/, '')}`
+
+    if (domain) {
+      const res = await fetch(`${base}/api/v1/courses?enrollment_state=active`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => null)
+
+      if (!res || !res.ok) {
+        setError('Could not connect to Canvas. Check your URL and token.')
+        setSaving(false)
+        return
+      }
     }
 
-    setSavedCount(pending.length)
-    setPending([])
+    await AsyncStorage.setItem(CANVAS_TOKEN_KEY, token)
+    if (domain) await AsyncStorage.setItem(CANVAS_DOMAIN_KEY, domain)
+    setSaved(true)
     setSaving(false)
   }
 
@@ -149,18 +60,33 @@ export default function Settings() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <Text style={styles.eyebrow}>Settings</Text>
-        <Text style={styles.heading}>Connect your apps</Text>
+    <SafeAreaView style={s.safe}>
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={s.header}>
+          <Text style={s.logo}>
+            <Text style={s.logoFlare}>flare </Text>
+            <Text style={s.logoPlan}>plan</Text>
+          </Text>
+          <View style={s.avatar} />
+        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Canvas</Text>
-          <Text style={styles.cardSub}>Connect Canvas to import your assignments</Text>
+        <Text style={s.heading}>Settings</Text>
+        <Text style={s.subheading}>
+          Connect Canvas so flareplan can pull your assignments and shape them around your energy.
+        </Text>
 
+        {/* Canvas connection card */}
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Canvas connection</Text>
+          <Text style={s.cardSub}>Stored locally on your device. Never sent anywhere except Canvas.</Text>
+
+          <Text style={s.fieldLabel}>
+            CANVAS URL <Text style={s.optional}>(optional)</Text>
+          </Text>
           <TextInput
-            style={styles.input}
-            placeholder="Canvas domain (e.g. canvas.myschool.edu)"
+            style={s.input}
+            placeholder="https://canvas.your-school.edu"
             placeholderTextColor={Colors.accent}
             value={domain}
             onChangeText={setDomain}
@@ -168,140 +94,116 @@ export default function Settings() {
             autoCorrect={false}
             keyboardType="url"
           />
-          <TextInput
-            style={styles.input}
-            placeholder="Paste your Canvas API token"
-            placeholderTextColor={Colors.accent}
-            value={token}
-            onChangeText={setToken}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+
+          <Text style={s.fieldLabel}>ACCESS TOKEN</Text>
+          <View style={s.tokenRow}>
+            <TextInput
+              style={[s.input, s.tokenInput]}
+              placeholder="Paste your Canvas access token"
+              placeholderTextColor={Colors.accent}
+              value={token}
+              onChangeText={setToken}
+              secureTextEntry={!showToken}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity style={s.eyeBtn} onPress={() => setShowToken(v => !v)}>
+              <Ionicons
+                name={showToken ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={Colors.accent}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={s.tokenHelpRow}>
+            <Text style={s.tokenHelp}>How to generate a Canvas token</Text>
+            <Ionicons name="open-outline" size={13} color={Colors.accent} />
+          </TouchableOpacity>
+
+          {!!error && <Text style={s.error}>{error}</Text>}
+          {saved && <Text style={s.successMsg}>Token saved successfully.</Text>}
+
           <TouchableOpacity
-            style={[styles.button, (!token || !domain || connecting) && styles.buttonDisabled]}
-            onPress={handleConnect}
-            disabled={!token || !domain || connecting}
+            style={[s.saveBtn, (!token || saving) && s.saveBtnDisabled]}
+            onPress={handleSave}
+            disabled={!token || saving}
           >
-            {connecting
+            {saving
               ? <ActivityIndicator color={Colors.white} />
-              : <Text style={styles.buttonText}>{connected ? 'Reconnect Canvas' : 'Connect Canvas'}</Text>
+              : <Text style={s.saveBtnText}>Save key</Text>
             }
           </TouchableOpacity>
         </View>
 
-        {connected && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Sync assignments</Text>
-            <Text style={styles.cardSub}>Preview and adjust energy levels before importing</Text>
+        {/* Security note */}
+        <Text style={s.securityNote}>
+          Your token stays on this device in browser storage. Treat it like a password — anyone with it can read and write to your Canvas account.
+        </Text>
 
-            {savedCount > 0 && (
-              <Text style={styles.savedNote}>Saved {savedCount} assignments to your tasks.</Text>
-            )}
-
-            <TouchableOpacity
-              style={[styles.button, syncing && styles.buttonDisabled]}
-              onPress={handleSync}
-              disabled={syncing}
-            >
-              {syncing
-                ? <ActivityIndicator color={Colors.white} />
-                : <Text style={styles.buttonText}>Preview assignments</Text>
-              }
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {!!error && <Text style={styles.error}>{error}</Text>}
-
-        {pending.length > 0 && (
-          <View>
-            <Text style={styles.pendingHeader}>{pending.length} assignments — adjust energy if needed</Text>
-
-            {pending.map((task, i) => (
-              <View key={i} style={styles.pendingCard}>
-                <Text style={styles.pendingSubject}>{task.subject}</Text>
-                <Text style={styles.pendingTitle}>{task.title}</Text>
-                <Text style={styles.pendingDue}>Due {task.due_date}</Text>
-                <View style={styles.energyRow}>
-                  {(['light', 'medium', 'heavy'] as const).map((level) => (
-                    <TouchableOpacity
-                      key={level}
-                      onPress={() => updateEnergy(i, level)}
-                      style={[styles.energyBtn, task.energy_required === level && styles.energyBtnActive]}
-                    >
-                      <Text style={[styles.energyBtnText, task.energy_required === level && styles.energyBtnTextActive]}>
-                        {level}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ))}
-
-            <TouchableOpacity
-              style={[styles.button, styles.saveAllButton, saving && styles.buttonDisabled]}
-              onPress={handleSaveAll}
-              disabled={saving}
-            >
-              {saving
-                ? <ActivityIndicator color={Colors.white} />
-                : <Text style={styles.buttonText}>Save all {pending.length} assignments</Text>
-              }
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <Text style={styles.signOutText}>Sign out</Text>
+        <TouchableOpacity style={s.signOutBtn} onPress={handleSignOut}>
+          <Text style={s.signOutText}>Sign out</Text>
         </TouchableOpacity>
-
       </ScrollView>
     </SafeAreaView>
   )
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-  container: { padding: 24, paddingBottom: 80 },
-  eyebrow: { fontSize: 11, letterSpacing: 2, color: Colors.accent, textTransform: 'uppercase', marginBottom: 6, marginTop: 8 },
-  heading: { fontSize: 30, fontWeight: '700', color: Colors.text, marginBottom: 24 },
+  scroll: { padding: 24, paddingBottom: 60 },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 20,
+  },
+  logo: { fontSize: 18 },
+  logoFlare: { fontWeight: '700', color: Colors.text },
+  logoPlan: { fontStyle: 'italic', fontWeight: '400', color: Colors.highlight },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.border },
+  heading: { fontSize: 34, fontWeight: '800', color: Colors.text, marginBottom: 8 },
+  subheading: { fontSize: 14, color: Colors.accent, lineHeight: 22, marginBottom: 28 },
   card: {
-    backgroundColor: Colors.white, borderRadius: 24, padding: 18,
+    backgroundColor: Colors.white, borderRadius: 20, padding: 20,
+    shadowColor: Colors.highlight, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 1,
     marginBottom: 16,
-    shadowColor: '#8B4A35', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 2,
   },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: Colors.secondary, marginBottom: 4 },
-  cardSub: { fontSize: 14, color: Colors.accent, marginBottom: 14, lineHeight: 22 },
+  cardTitle: { fontSize: 17, fontWeight: '700', color: Colors.text, marginBottom: 4 },
+  cardSub: { fontSize: 13, color: Colors.accent, lineHeight: 20, marginBottom: 20 },
+  fieldLabel: {
+    fontSize: 11, fontWeight: '700', letterSpacing: 1.5,
+    color: Colors.secondary, textTransform: 'uppercase', marginBottom: 8,
+  },
+  optional: { fontWeight: '400', color: Colors.muted, textTransform: 'none', letterSpacing: 0 },
   input: {
-    backgroundColor: Colors.background, borderRadius: 16, padding: 16,
-    fontSize: 16, color: Colors.secondary, marginBottom: 12,
+    backgroundColor: Colors.background, borderRadius: 12,
+    paddingVertical: 14, paddingHorizontal: 16,
+    fontSize: 15, color: Colors.secondary,
+    borderWidth: 1, borderColor: Colors.border,
+    marginBottom: 16,
   },
-  button: {
-    backgroundColor: Colors.text, borderRadius: 16, padding: 16, alignItems: 'center',
+  tokenRow: { position: 'relative', marginBottom: 0 },
+  tokenInput: { paddingRight: 50, marginBottom: 0 },
+  eyeBtn: {
+    position: 'absolute', right: 14, top: 14,
   },
-  buttonDisabled: { opacity: 0.4 },
-  buttonText: { color: Colors.white, fontSize: 16, fontWeight: '600' },
-  savedNote: { fontSize: 14, color: '#6B9E6B', marginBottom: 10 },
-  error: { color: '#F87171', fontSize: 14, marginBottom: 12 },
-  pendingHeader: { fontSize: 16, fontWeight: '500', color: Colors.secondary, marginBottom: 12 },
-  pendingCard: {
-    backgroundColor: Colors.white, borderRadius: 24, padding: 16,
-    marginBottom: 10,
-    shadowColor: '#8B4A35', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 2,
+  tokenHelpRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 8, marginBottom: 20,
   },
-  pendingSubject: { fontSize: 11, color: Colors.accent, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 },
-  pendingTitle: { fontSize: 16, fontWeight: '600', color: Colors.text, marginBottom: 3 },
-  pendingDue: { fontSize: 13, color: Colors.accent, marginBottom: 12 },
-  energyRow: { flexDirection: 'row', gap: 8 },
-  energyBtn: {
-    flex: 1, backgroundColor: Colors.background, borderRadius: 12,
-    paddingVertical: 10, alignItems: 'center',
+  tokenHelp: { fontSize: 13, color: Colors.accent, textDecorationLine: 'underline' },
+  error: { color: '#F87171', fontSize: 13, marginBottom: 12 },
+  successMsg: { color: '#6B9E6B', fontSize: 13, marginBottom: 12, fontWeight: '500' },
+  saveBtn: {
+    backgroundColor: Colors.highlight, borderRadius: 12,
+    paddingVertical: 14, alignItems: 'center',
   },
-  energyBtnActive: { backgroundColor: Colors.secondary },
-  energyBtnText: { fontSize: 13, fontWeight: '500', color: Colors.accent, textTransform: 'capitalize' },
-  energyBtnTextActive: { color: Colors.white },
-  saveAllButton: { marginTop: 4, marginBottom: 16 },
-  signOutButton: { marginTop: 32, padding: 14, alignItems: 'center' },
+  saveBtnDisabled: { opacity: 0.4 },
+  saveBtnText: { color: Colors.white, fontSize: 15, fontWeight: '600' },
+  securityNote: {
+    fontSize: 13, color: Colors.muted, lineHeight: 20,
+    marginBottom: 32, paddingHorizontal: 4,
+  },
+  signOutBtn: { alignItems: 'center', paddingVertical: 14 },
   signOutText: { fontSize: 14, color: Colors.accent },
 })

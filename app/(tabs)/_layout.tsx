@@ -6,7 +6,7 @@ type IoniconsName = React.ComponentProps<typeof Ionicons>['name']
 
 function tabIcon(name: IoniconsName, focusedName: IoniconsName) {
   return ({ color, focused }: { color: string; focused: boolean }) => (
-    <Ionicons name={focused ? focusedName : name} size={24} color={color} />
+    <Ionicons name={focused ? focusedName : name} size={22} color={color} />
   )
 }
 
@@ -16,7 +16,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: Colors.text,
-        tabBarInactiveTintColor: Colors.accent,
+        tabBarInactiveTintColor: Colors.muted,
         tabBarStyle: {
           backgroundColor: Colors.white,
           borderTopColor: Colors.border,
@@ -35,15 +35,22 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Check-in',
+          title: 'Home',
           tabBarIcon: tabIcon('home-outline', 'home'),
         }}
       />
       <Tabs.Screen
-        name="tasks"
+        name="planner"
         options={{
-          title: 'Tasks',
-          tabBarIcon: tabIcon('list-outline', 'list'),
+          title: 'Planner',
+          tabBarIcon: tabIcon('calendar-outline', 'calendar'),
+        }}
+      />
+      <Tabs.Screen
+        name="insights"
+        options={{
+          title: 'Insights',
+          tabBarIcon: tabIcon('bar-chart-outline', 'bar-chart'),
         }}
       />
       <Tabs.Screen
@@ -60,6 +67,7 @@ export default function TabLayout() {
           tabBarIcon: tabIcon('settings-outline', 'settings'),
         }}
       />
+      <Tabs.Screen name="tasks" options={{ href: null }} />
     </Tabs>
   )
 }
